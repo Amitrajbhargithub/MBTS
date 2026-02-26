@@ -17,8 +17,18 @@ class User extends Authenticatable
     protected $fillable = [
         'name',
         'email',
+        'mobile',
         'password',
+        'otp',
+        'otp_expires_at',
+        'city',
+        'is_active',
     ];
+
+    public function connections()
+    {
+        return $this->hasMany(\App\Models\Connection::class, 'user_id');
+    }
 
     /**
      * The attributes excluded from the model's JSON form.

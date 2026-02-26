@@ -2,18 +2,60 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\MobileApiController;
 
 /*
 |--------------------------------------------------------------------------
 | API Routes
 |--------------------------------------------------------------------------
+| All routes are prefixed with /api automatically.
 |
-| Here is where you can register API routes for your application. These
-| routes are loaded by the RouteServiceProvider and all of them will
-| be assigned to the "api" middleware group. Make something great!
-|
+| Public Routes  : No token required
+| Protected Routes: Requires Bearer token (auth:sanctum)
+|--------------------------------------------------------------------------
 */
 
-Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
-    return $request->user();
+// ── Auth Routes (Public) ──────────────────────────────────────────────────
+Route::prefix('auth')->group(function () {
+
+    // Signup: POST /api/auth/signup
+    // Body: name, mobile, city
+    Route::post('/signup', [MobileApiController::class, 'signup']);
+
+    // Login: POST /api/auth/login
+    // Body: mobile, password
+    Route::post('/login', [MobileApiController::class, 'login']);
+
+    // Verify OTP after signup: POST /api/auth/verify-otp
+    // Body: mobile, otp
+    Route::post('/verify-otp', [MobileApiController::class, 'verifyOtp']);
+
+    // Verify OTP after login: POST /api/auth/login/verify-otp
+    // Body: mobile, otp
+    Route::post('/login/verify-otp', [MobileApiController::class, 'loginVerifyOtp']);
+
+    // Resend OTP: POST /api/auth/resend-otp
+    // Body: mobile
+    Route::post('/resend-otp', [MobileApiController::class, 'resendOtp']);
+});
+
+// ── Public - Get Plans ────────────────────────────────────────────────────
+// GET /api/plans  or  GET /api/plans?type=home|business
+Route::get('/plans', [MobileApiController::class, 'plans']);
+
+// ── Protected Routes (Bearer Token Required) ──────────────────────────────
+Route::middleware('auth:sanctum')->group(function () {
+
+    // Logout: POST /api/auth/logout
+    Route::post('/auth/logout', [MobileApiController::class, 'logout']);
+
+    // Logged-in user profile: GET /api/profile
+    Route::get('/profile', [MobileApiController::class, 'profile']);
+
+    // Submit new connection: POST /api/connection
+    // Body: name, mobile, city, address, plan
+    Route::post('/connection', [MobileApiController::class, 'submitConnection']);
+
+    // Get my connections: GET /api/connection
+    Route::get('/connection', [MobileApiController::class, 'myConnections']);
 });
