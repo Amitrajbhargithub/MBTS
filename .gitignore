@@ -1,0 +1,9 @@
+/public
+.env
+/vendor
+/node_modules
+/storage/logs/laravel.log
+/app-release.apk
+/app-debug.apk
+/app-release.aab
+/app-debug.aab
