@@ -6,8 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Connection;
 use App\Models\Plan;
 use App\Models\User;
+use App\Traits\ResponseFormat;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -15,6 +15,8 @@ use Illuminate\Support\Facades\Validator;
 
 class MobileApiController extends Controller
 {
+    use ResponseFormat;
+
     // ─────────────────────────────────────────────
     //  HELPER: Send SMS OTP
     // ─────────────────────────────────────────────
@@ -37,7 +39,7 @@ class MobileApiController extends Controller
     }
 
     // ─────────────────────────────────────────────
-    //  1. SIGNUP - Step 1: Register user
+    //  1. SIGNUP
     //     POST /api/auth/signup
     //     Body: name, mobile, city
     // ─────────────────────────────────────────────
@@ -50,46 +52,28 @@ class MobileApiController extends Controller
         ]);
 
         if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => $validator->errors()->first(),
-                'errors'  => $validator->errors(),
-            ], 422);
+            return $this->error($validator->errors()->first(), 422, $validator->errors());
         }
 
-        // Check if mobile already registered
         $existingUser = User::where('mobile', $request->mobile)->first();
         if ($existingUser) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Mobile number already registered. Please login.',
-            ], 409);
+            return $this->errorResponse('Mobile number already registered. Please login.', 'already_registered', 409);
         }
 
-        $otp = '123456'; // Fixed OTP as per requirement
+        $otp  = '123456';
 
-        // Create / update user
         $user = User::create([
             'name'           => $request->name,
             'mobile'         => $request->mobile,
-            'email'          => $request->mobile . '@mbts.local', // placeholder email
+            'email'          => $request->mobile . '@mbts.local',
             'city'           => $request->city,
-            'password'       => Hash::make('Test@123'),           // Fixed password
+            'password'       => Hash::make('Test@123'),
             'otp'            => $otp,
             'otp_expires_at' => now()->addMinutes(10),
         ]);
 
-        // Send OTP via SMS
         $this->sendOtp($request->mobile, $otp);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'OTP sent to ' . $request->mobile . '. Please verify.',
-            'data'    => [
-                'mobile'  => $request->mobile,
-                'user_id' => $user->id,
-            ],
-        ], 201);
+        return $this->successResponse('User registered successfully.', $user);
     }
 
     // ─────────────────────────────────────────────
@@ -105,59 +89,34 @@ class MobileApiController extends Controller
         ]);
 
         if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => $validator->errors()->first(),
-            ], 422);
+            return $this->errorResponse($validator->errors()->first(), 'validation_failed', 422, $validator->errors());
         }
 
         $user = User::where('mobile', $request->mobile)->first();
 
         if (!$user) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Mobile number not found.',
-            ], 404);
+            return $this->errorResponse('Mobile number not found.', 'mobile_not_found', 404);
         }
 
         if ($user->otp !== $request->otp) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Invalid OTP. Please try again.',
-            ], 401);
+            return $this->errorResponse('Invalid OTP. Please try again.', 'invalid_otp', 401);
         }
 
         if ($user->otp_expires_at && now()->isAfter($user->otp_expires_at)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'OTP has expired. Please request a new one.',
-            ], 401);
+            return $this->errorResponse('OTP has expired. Please request a new one.', 'otp_expired', 401);
         }
 
-        // Clear OTP & issue token
         $user->update(['otp' => null, 'otp_expires_at' => null]);
         $token = $user->createToken('mobile-app')->plainTextToken;
 
-        return response()->json([
-            'success' => true,
-            'message' => 'OTP verified successfully.',
-            'data'    => [
-                'token'      => $token,
-                'token_type' => 'Bearer',
-                'user'       => [
-                    'id'     => $user->id,
-                    'name'   => $user->name,
-                    'mobile' => $user->mobile,
-                    'city'   => $user->city,
-                ],
-            ],
-        ]);
+        $user->token = $token; 
+        return $this->successResponse('OTP verified successfully.', $user);
     }
 
     // ─────────────────────────────────────────────
-    //  3. LOGIN - Step 1: Send OTP
+    //  3. LOGIN
     //     POST /api/auth/login
-    //     Body: mobile (or email), password
+    //     Body: mobile, password
     // ─────────────────────────────────────────────
     public function login(Request $request)
     {
@@ -167,19 +126,13 @@ class MobileApiController extends Controller
         ]);
 
         if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => $validator->errors()->first(),
-            ], 422);
+            return $this->errorResponse($validator->errors()->first(), 'validation_failed', 422, $validator->errors());
         }
 
         $user = User::where('mobile', $request->mobile)->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Invalid mobile number or password.',
-            ], 401);
+            return $this->errorResponse('Invalid mobile number or password.', 'invalid_credentials', 401);
         }
 
         $otp = '123456'; // Fixed OTP as per requirement
@@ -189,16 +142,10 @@ class MobileApiController extends Controller
             'otp_expires_at' => now()->addMinutes(10),
         ]);
 
-        // Send OTP via SMS
         $this->sendOtp($request->mobile, $otp);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'OTP sent to your registered mobile number.',
-            'data'    => [
-                'mobile' => $request->mobile,
-            ],
-        ]);
+        $data =  ['mobile' => $request->mobile];
+        return $this->successResponse('OTP sent to your registered mobile number.', $data);
     }
 
     // ─────────────────────────────────────────────
@@ -208,7 +155,6 @@ class MobileApiController extends Controller
     // ─────────────────────────────────────────────
     public function loginVerifyOtp(Request $request)
     {
-        // Same logic as signup OTP verify
         return $this->verifyOtp($request);
     }
 
@@ -224,19 +170,13 @@ class MobileApiController extends Controller
         ]);
 
         if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => $validator->errors()->first(),
-            ], 422);
+            return $this->errorResponse($validator->errors()->first(), 'validation_failed', 422, $validator->errors());
         }
 
         $user = User::where('mobile', $request->mobile)->first();
 
         if (!$user) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Mobile number not found.',
-            ], 404);
+            return $this->errorResponse('Mobile number not found.', 'mobile_not_found', 404);
         }
 
         $otp = '123456'; // Fixed OTP as per requirement
@@ -248,52 +188,42 @@ class MobileApiController extends Controller
 
         $this->sendOtp($request->mobile, $otp);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'OTP resent successfully.',
-        ]);
+        return $this->successResponse('OTP resent successfully.', ['mobile' => $request->mobile]);
     }
 
     // ─────────────────────────────────────────────
     //  6. LOGOUT
-    //     POST /api/auth/logout  [Requires Bearer Token]
+    //     POST /api/auth/logout  [Bearer Token]
     // ─────────────────────────────────────────────
     public function logout(Request $request)
     {
         $request->user()->currentAccessToken()->delete();
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Logged out successfully.',
-        ]);
+        return $this->success(null, 'Logged out successfully.');
     }
 
     // ─────────────────────────────────────────────
-    //  7. GET AUTHENTICATED USER PROFILE
-    //     GET /api/user  [Requires Bearer Token]
+    //  7. USER PROFILE
+    //     GET /api/profile  [Bearer Token]
     // ─────────────────────────────────────────────
     public function profile(Request $request)
     {
         $user = $request->user();
 
-        return response()->json([
-            'success' => true,
-            'data'    => [
-                'id'         => $user->id,
-                'name'       => $user->name,
-                'mobile'     => $user->mobile,
-                'email'      => $user->email,
-                'city'       => $user->city,
-                'is_active'  => $user->is_active,
-                'created_at' => $user->created_at,
-            ],
+        return $this->successResponse("User profile retrieved successfully.", [
+            'id'         => $user->id,
+            'name'       => $user->name,
+            'mobile'     => $user->mobile,
+            'email'      => $user->email,
+            'city'       => $user->city,
+            'is_active'  => $user->is_active,
+            'created_at' => $user->created_at,
         ]);
     }
 
     // ─────────────────────────────────────────────
     //  8. GET PLANS
-    //     GET /api/plans
-    //     Query: ?type=home|business
+    //     GET /api/plans?type=home|business
     // ─────────────────────────────────────────────
     public function plans(Request $request)
     {
@@ -303,17 +233,12 @@ class MobileApiController extends Controller
             $query->where('type', $request->type);
         }
 
-        $plans = $query->get();
-
-        return response()->json([
-            'success' => true,
-            'data'    => $plans,
-        ]);
+        return $this->successResponse("Plan fetch successfully",$query->get());
     }
 
     // ─────────────────────────────────────────────
     //  9. SUBMIT NEW CONNECTION
-    //     POST /api/connection  [Requires Bearer Token]
+    //     POST /api/connection  [Bearer Token]
     //     Body: name, mobile, city, address, plan
     // ─────────────────────────────────────────────
     public function submitConnection(Request $request)
@@ -327,28 +252,22 @@ class MobileApiController extends Controller
         ]);
 
         if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => $validator->errors()->first(),
-                'errors'  => $validator->errors(),
-            ], 422);
+           return $this->errorResponse($validator->errors()->first(), 'validation_failed', 422, $validator->errors());
         }
 
-        $user = $request->user();
-
-        // Check for duplicate connection request
         $existing = Connection::where('mobile', $request->mobile)->first();
         if ($existing) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Connection request already exists with Request ID# ' . $existing->request_number,
-            ], 409);
+            return $this->errorResponse(
+                'Connection request already exists with Request ID# ' . $existing->request_number,'already_exist',
+                409
+            );
+            
         }
 
         $requestNumber = 'MBTS' . rand(10000000000, 99999999999);
 
         $connection = Connection::create([
-            'user_id'        => $user->id,
+            'user_id'        => $request->user()->id,
             'name'           => $request->name,
             'mobile'         => $request->mobile,
             'city'           => $request->city,
@@ -373,29 +292,19 @@ class MobileApiController extends Controller
             Log::warning('Connection SMS failed: ' . $e->getMessage());
         }
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Connection request submitted successfully.',
-            'data'    => [
-                'request_number' => $requestNumber,
-                'connection'     => $connection,
-            ],
-        ], 201);
+        return $this->successResponse('Connection request submitted successfully.',
+            ['request_number' => $requestNumber, 'connection' => $connection]
+        );
     }
 
     // ─────────────────────────────────────────────
     //  10. GET MY CONNECTIONS
-    //      GET /api/connection  [Requires Bearer Token]
+    //      GET /api/connection  [Bearer Token]
     // ─────────────────────────────────────────────
     public function myConnections(Request $request)
     {
-        $connections = Connection::where('user_id', $request->user()->id)
-            ->latest()
-            ->get();
+        $connections = Connection::where('user_id', $request->user()->id)->latest()->get();
 
-        return response()->json([
-            'success' => true,
-            'data'    => $connections,
-        ]);
+        return $this->successResponse('Connection retrive successfully.',$connections);
     }
 }

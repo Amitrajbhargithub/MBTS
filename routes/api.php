@@ -16,7 +16,7 @@ use App\Http\Controllers\Api\MobileApiController;
 */
 
 // ── Auth Routes (Public) ──────────────────────────────────────────────────
-Route::prefix('auth')->group(function () {
+// Route::prefix('auth')->group(function () {
 
     // Signup: POST /api/auth/signup
     // Body: name, mobile, city
@@ -37,7 +37,7 @@ Route::prefix('auth')->group(function () {
     // Resend OTP: POST /api/auth/resend-otp
     // Body: mobile
     Route::post('/resend-otp', [MobileApiController::class, 'resendOtp']);
-});
+// });
 
 // ── Public - Get Plans ────────────────────────────────────────────────────
 // GET /api/plans  or  GET /api/plans?type=home|business
