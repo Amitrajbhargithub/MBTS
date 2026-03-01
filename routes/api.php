@@ -37,6 +37,18 @@ use App\Http\Controllers\Api\MobileApiController;
     // Resend OTP: POST /api/auth/resend-otp
     // Body: mobile
     Route::post('/resend-otp', [MobileApiController::class, 'resendOtp']);
+
+    // Forgot Password – Step 1: Send OTP: POST /api/forgot-password
+    // Body: mobile
+    Route::post('/forgot-password', [MobileApiController::class, 'forgotPassword']);
+
+    // Forgot Password – Step 2: Verify OTP: POST /api/forgot-password/verify-otp
+    // Body: mobile, otp
+    Route::post('/forgot-password/verify-otp', [MobileApiController::class, 'forgotPasswordVerifyOtp']);
+
+    // Forgot Password – Step 3: Reset Password: POST /api/reset-password
+    // Body: mobile, reset_token, password, password_confirmation
+    Route::post('/reset-password', [MobileApiController::class, 'resetPassword']);
 // });
 
 // ── Public - Get Plans ────────────────────────────────────────────────────

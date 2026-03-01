@@ -307,4 +307,125 @@ class MobileApiController extends Controller
 
         return $this->successResponse('Connection retrive successfully.',$connections);
     }
+
+    // ─────────────────────────────────────────────
+    //  11. FORGOT PASSWORD – STEP 1: SEND OTP
+    //      POST /api/forgot-password
+    //      Body: mobile
+    // ─────────────────────────────────────────────
+    public function forgotPassword(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'mobile' => 'required|digits:10',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->errorResponse($validator->errors()->first(), 'validation_failed', 422, $validator->errors());
+        }
+
+        $user = User::where('mobile', $request->mobile)->first();
+
+        if (!$user) {
+            return $this->errorResponse('Mobile number not registered.', 'mobile_not_found', 404);
+        }
+
+        $otp = '123456'; // Fixed OTP as per project requirement
+
+        $user->update([
+            'otp'            => $otp,
+            'otp_expires_at' => now()->addMinutes(10),
+        ]);
+
+        $this->sendOtp($request->mobile, $otp);
+
+        return $this->successResponse('OTP sent to your registered mobile number for password reset.', [
+            'mobile' => $request->mobile,
+        ]);
+    }
+
+    // ─────────────────────────────────────────────
+    //  12. FORGOT PASSWORD – STEP 2: VERIFY OTP
+    //      POST /api/forgot-password/verify-otp
+    //      Body: mobile, otp
+    //      Returns: reset_token (valid 15 min)
+    // ─────────────────────────────────────────────
+    public function forgotPasswordVerifyOtp(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'mobile' => 'required|digits:10',
+            'otp'    => 'required|string',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->errorResponse($validator->errors()->first(), 'validation_failed', 422, $validator->errors());
+        }
+
+        $user = User::where('mobile', $request->mobile)->first();
+
+        if (!$user) {
+            return $this->errorResponse('Mobile number not found.', 'mobile_not_found', 404);
+        }
+
+        if ($user->otp !== $request->otp) {
+            return $this->errorResponse('Invalid OTP. Please try again.', 'invalid_otp', 401);
+        }
+
+        if ($user->otp_expires_at && now()->isAfter($user->otp_expires_at)) {
+            return $this->errorResponse('OTP has expired. Please request a new one.', 'otp_expired', 401);
+        }
+
+        // Generate a secure one-time reset token and store it temporarily
+        $resetToken = bin2hex(random_bytes(32));
+
+        $user->update([
+            'otp'            => $resetToken,          // reuse otp column to store reset token
+            'otp_expires_at' => now()->addMinutes(15),
+        ]);
+
+        return $this->successResponse('OTP verified. Use the reset_token to set a new password.', [
+            'mobile'      => $request->mobile,
+            'reset_token' => $resetToken,
+        ]);
+    }
+
+    // ─────────────────────────────────────────────
+    //  13. FORGOT PASSWORD – STEP 3: RESET PASSWORD
+    //      POST /api/reset-password
+    //      Body: mobile, reset_token, password, password_confirmation
+    // ─────────────────────────────────────────────
+    public function resetPassword(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'mobile'                => 'required|digits:10',
+            'reset_token'           => 'required|string',
+            'password'              => 'required|string|min:6|confirmed',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->errorResponse($validator->errors()->first(), 'validation_failed', 422, $validator->errors());
+        }
+
+        $user = User::where('mobile', $request->mobile)->first();
+
+        if (!$user) {
+            return $this->errorResponse('Mobile number not found.', 'mobile_not_found', 404);
+        }
+
+        if ($user->otp !== $request->reset_token) {
+            return $this->errorResponse('Invalid or expired reset token. Please start again.', 'invalid_reset_token', 401);
+        }
+
+        if ($user->otp_expires_at && now()->isAfter($user->otp_expires_at)) {
+            return $this->errorResponse('Reset token has expired. Please request a new OTP.', 'reset_token_expired', 401);
+        }
+
+        // Update password and clear the token
+        $user->update([
+            'password'       => Hash::make($request->password),
+            'otp'            => null,
+            'otp_expires_at' => null,
+        ]);
+
+        return $this->successResponse('Password reset successfully. Please login with your new password.');
+    }
 }
