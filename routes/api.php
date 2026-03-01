@@ -70,4 +70,11 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Get my connections: GET /api/connection
     Route::get('/connection', [MobileApiController::class, 'myConnections']);
+
+    // Upload KYC Document: POST /api/kyc/upload
+    // Body (multipart/form-data): document_type, document (file)
+    Route::post('/kyc/upload', [MobileApiController::class, 'uploadDocument']);
+
+    // Get KYC Status: GET /api/kyc/status
+    Route::get('/kyc/status', [MobileApiController::class, 'getKycStatus']);
 });

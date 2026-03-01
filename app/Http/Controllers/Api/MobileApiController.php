@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Connection;
+use App\Models\CustomerKyc;
+use Illuminate\Support\Facades\Storage;
 use App\Models\Plan;
 use App\Models\User;
 use App\Traits\ResponseFormat;
@@ -427,5 +429,94 @@ class MobileApiController extends Controller
         ]);
 
         return $this->successResponse('Password reset successfully. Please login with your new password.');
+    }
+
+    // ─────────────────────────────────────────────
+    //  14. UPLOAD / VERIFY DOCUMENT (KYC)
+    //      POST /api/kyc/upload  [Bearer Token]
+    //      Body (multipart/form-data):
+    //        document_type : aadhar_front | aadhar_back | pancard_front | selfie
+    //        document      : file (jpg|jpeg|png|pdf) max 5MB
+    // ─────────────────────────────────────────────
+    public function uploadDocument(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'document_type' => 'required|string|in:' . implode(',', CustomerKyc::DOCUMENT_TYPES),
+            'document'      => 'required|file|mimes:jpg,jpeg,png,pdf|max:5120',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->errorResponse($validator->errors()->first(), 'validation_failed', 422, $validator->errors());
+        }
+
+        $user         = $request->user();
+        $documentType = $request->document_type;
+        $file         = $request->file('document');
+
+        // Delete old file for this document type if it exists
+        $existing = CustomerKyc::where('customer_id', $user->id)
+                                ->where('document_type', $documentType)
+                                ->first();
+
+        if ($existing && Storage::disk('public')->exists($existing->file_path)) {
+            Storage::disk('public')->delete($existing->file_path);
+        }
+
+        // Store the new file: storage/app/public/kyc/{user_id}/{type}_{timestamp}.{ext}
+        $extension = $file->getClientOriginalExtension();
+        $filename  = $documentType . '_' . time() . '.' . $extension;
+        $filePath  = $file->storeAs('kyc/' . $user->id, $filename, 'public');
+
+        // Upsert the kyc record (insert or update)
+        $kyc = CustomerKyc::updateOrCreate(
+            [
+                'customer_id'   => $user->id,
+                'document_type' => $documentType,
+            ],
+            [
+                'file_path'     => $filePath,
+                'original_name' => $file->getClientOriginalName(),
+                'status'        => 'pending',
+            ]
+        );
+
+        return $this->successResponse('Document uploaded successfully.', [
+            'id'            => $kyc->id,
+            'document_type' => $kyc->document_type,
+            'status'        => $kyc->status,
+            'file_url'      => Storage::disk('public')->url($filePath),
+        ]);
+    }
+
+    // ─────────────────────────────────────────────
+    //  15. GET KYC STATUS
+    //      GET /api/kyc/status  [Bearer Token]
+    // ─────────────────────────────────────────────
+    public function getKycStatus(Request $request)
+    {
+        $user      = $request->user();
+        $documents = CustomerKyc::where('customer_id', $user->id)->get();
+
+        // Build a map of all required document types with their current status
+        $kycMap = [];
+        foreach (CustomerKyc::DOCUMENT_TYPES as $type) {
+            $doc = $documents->firstWhere('document_type', $type);
+            $kycMap[$type] = $doc ? [
+                'id'       => $doc->id,
+                'status'   => $doc->status,
+                'file_url' => Storage::disk('public')->url($doc->file_path),
+            ] : null;
+        }
+
+        $uploadedCount  = $documents->count();
+        $totalRequired  = count(CustomerKyc::DOCUMENT_TYPES);
+        $allUploaded    = $uploadedCount >= $totalRequired;
+        $allVerified    = $documents->where('status', 'verified')->count() === $totalRequired;
+
+        return $this->successResponse('KYC status retrieved successfully.', [
+            'all_uploaded' => $allUploaded,
+            'all_verified' => $allVerified,
+            'documents'    => $kycMap,
+        ]);
     }
 }
