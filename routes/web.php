@@ -43,6 +43,17 @@ Route::post('payu-hash',[PayUMoneyController::class,'payuHash'])->name('payu-has
 Route::post('checkout/success',[PayUMoneyController::class,'payUResponse'])->name('pay.u.response')->withoutMiddleware([VerifyCsrfToken::class]);
 Route::post('pay-u-cancel',[PayUMoneyController::class,'payUCancel'])->name('pay.u.cancel')->withoutMiddleware([VerifyCsrfToken::class]);
 
+// ── PayU API (Mobile App) Callback Routes ─────────────────────────────────
+// PayU POSTs to these after payment. Must be web routes (HTML response).
+// CSRF exempt because PayU posts from their server, not our browser.
+Route::post('/payment/payu/success', [PayUMoneyController::class, 'payUApiSuccess'])
+    ->name('payu.api.success')
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
+Route::post('/payment/payu/failure', [PayUMoneyController::class, 'payUApiFailure'])
+    ->name('payu.api.failure')
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
 
 
 

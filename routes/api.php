@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\MobileApiController;
+use App\Http\Controllers\Api\PayUApiController;
 
 /*
 |--------------------------------------------------------------------------
@@ -77,4 +78,34 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Get KYC Status: GET /api/kyc/status
     Route::get('/kyc/status', [MobileApiController::class, 'getKycStatus']);
+
+    // ── PayU Payment Routes (Protected) ──────────────────────────────────────
+
+    // Step 1 – Initiate payment & get all params + hash: POST /api/payment/initiate
+    // Body: amount, productinfo, firstname, email, phone
+    Route::post('/payment/initiate', [PayUApiController::class, 'initiatePayment']);
+
+    // Step 1b – Generate hash only (if app builds the form): POST /api/payment/hash
+    // Body: txnid, amount, productinfo, firstname, email
+    Route::post('/payment/hash', [PayUApiController::class, 'generateHash']);
+
+    // Get payment history for the logged-in user: GET /api/payment/history
+    Route::get('/payment/history', [PayUApiController::class, 'paymentHistory']);
+
+    // Get single transaction status: GET /api/payment/status/{txnid}
+    Route::get('/payment/status/{txnid}', [PayUApiController::class, 'transactionStatus']);
 });
+
+// ── PayU Public Routes (No auth — browser/WebView/PayU hits these) ───────────
+
+// WebView opens this URL → serves auto-submit HTML form → redirects to PayU Bolt checkout
+// GET /api/payment/redirect/{txnid}
+Route::get('/payment/redirect/{txnid}', [PayUApiController::class, 'redirectToPayU'])->name('api.pay.redirect');
+
+// PayU Success Callback — PayU POSTs here after successful payment
+// POST /api/payment/success
+Route::post('/payment/success', [PayUApiController::class, 'paymentSuccess'])->name('api.pay.success');
+
+// PayU Failure Callback — PayU POSTs here after failed/cancelled payment
+// POST /api/payment/failure
+Route::post('/payment/failure', [PayUApiController::class, 'paymentFailure'])->name('api.pay.failure');

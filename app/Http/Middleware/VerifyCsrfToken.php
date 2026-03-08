@@ -12,6 +12,11 @@ class VerifyCsrfToken extends Middleware
      * @var array<int, string>
      */
     protected $except = [
-        //
+        // PayU payment gateway callbacks (PayU POSTs from their server — no CSRF token)
+        'checkout/success',
+        'pay-u-cancel',
+        'payu-hash',
+        'payment/payu/success',
+        'payment/payu/failure',
     ];
 }
