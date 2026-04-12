@@ -62,7 +62,7 @@ class MobileApiController extends Controller
             return $this->errorResponse('Mobile number already registered. Please login.', 'already_registered', 409);
         }
 
-        $otp  = '123456';
+        $otp = (string) random_int(100000, 999999);
 
         $user = User::create([
             'name'           => $request->name,
@@ -75,7 +75,11 @@ class MobileApiController extends Controller
         ]);
 
         $this->sendOtp($request->mobile, $otp);
-        return $this->successResponse('User registered successfully.', $user);
+
+        return $this->successResponse('User registered successfully.', [
+            'mobile' => $request->mobile,
+            'otp'    => $otp,
+        ]);
     }
 
     // ─────────────────────────────────────────────
@@ -111,8 +115,17 @@ class MobileApiController extends Controller
         $user->update(['otp' => null, 'otp_expires_at' => null]);
         $token = $user->createToken('mobile-app')->plainTextToken;
 
-        $user->token = $token; 
-        return $this->successResponse('OTP verified successfully.', $user);
+        return $this->successResponse('OTP verified successfully.', [
+            'access_token' => $token,
+            'token_type'   => 'Bearer',
+            'user'         => [
+                'id'     => $user->id,
+                'name'   => $user->name,
+                'mobile' => $user->mobile,
+                'email'  => $user->email,
+                'city'   => $user->city,
+            ],
+        ]);
     }
 
     // ─────────────────────────────────────────────
