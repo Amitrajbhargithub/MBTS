@@ -118,13 +118,12 @@ class MobileApiController extends Controller
     // ─────────────────────────────────────────────
     //  3. LOGIN
     //     POST /api/auth/login
-    //     Body: mobile, password
+    //     Body: mobile
     // ─────────────────────────────────────────────
     public function login(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'mobile'   => 'required|digits:10',
-            'password' => 'required|string',
+            'mobile' => 'required|digits:10',
         ]);
 
         if ($validator->fails()) {
@@ -133,11 +132,11 @@ class MobileApiController extends Controller
 
         $user = User::where('mobile', $request->mobile)->first();
 
-        if (!$user || !Hash::check($request->password, $user->password)) {
-            return $this->errorResponse('Invalid mobile number or password.', 'invalid_credentials', 401);
+        if (!$user) {
+            return $this->errorResponse('Mobile number not found. Please sign up first.', 'mobile_not_found', 404);
         }
 
-        $otp = '123456'; // Fixed OTP as per requirement
+        $otp = (string) random_int(100000, 999999);
 
         $user->update([
             'otp'            => $otp,
@@ -146,7 +145,7 @@ class MobileApiController extends Controller
 
         $this->sendOtp($request->mobile, $otp);
 
-        $data =  ['mobile' => $request->mobile];
+        $data = ['mobile' => $request->mobile, 'otp' => $otp];
         return $this->successResponse('OTP sent to your registered mobile number.', $data);
     }
 
